@@ -54,7 +54,7 @@
 
         <header class="text-center mb-8">
             <h1 class="text-4xl md:text-5xl font-bold text-gray-900">Mon Cerveau Augmenté</h1>
-            <p class="text-lg text-gray-600 mt-2">{{ new Date().toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) }}</p>
+            <p class="text-lg text-gray-600 mt-2">{{ currentDate }}</p>
         </header>
 
         <!-- SECTION : Les 3 Victoires du Jour -->
@@ -237,6 +237,14 @@
 
                 // Champ de saisie pour une nouvelle tâche
                 const newTask = ref('');
+
+                // Date actuelle formatée
+                const currentDate = ref(new Date().toLocaleDateString('fr-FR', { 
+                    weekday: 'long', 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric' 
+                }));
 
                 // Liste principale de toutes les tâches
                 const tasks = ref(JSON.parse(localStorage.getItem('tasks') || '[]'));
@@ -632,6 +640,7 @@
                 // On retourne toutes les données et méthodes nécessaires au template HTML
                 return {
                     newTask,
+                    currentDate,
                     tasks,
                     timers,
                     now,
