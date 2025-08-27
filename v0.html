@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mon Cerveau Augmenté</title>
+    
+    <!-- Tailwind CSS pour le style -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Vue.js pour l'interactivité -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+
+    <!-- SortableJS pour le glisser-déposer (drag-and-drop) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+    
+    <!-- VueDraggable pour intégrer SortableJS avec Vue -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Vue.Draggable/4.1.0/vuedraggable.umd.min.js"></script>
+
+    <!-- Icônes Lucide -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- Supabase SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f2f5; /* Un gris très clair pour le fond */
+        }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap');
+        
+        /* Styles pour l'animation de la liste et des tâches */
+        .list-group {
+            min-height: 80px;
+        }
+        .ghost {
+            opacity: 0.5;
+            background: #c8ebfb;
+        }
+        .task-item {
+            cursor: grab;
+            transition: all 0.2s ease-in-out;
+        }
+        .task-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <div id="app" class="container mx-auto p-4 sm:p-6 md:p-8 max-w-7xl">
+
+        <header class="text-center mb-8">
+            <h1 class="text-4xl md:text-5xl font-bold text-gray-900">Mon Cerveau Augmenté</h1>
+            <p class="text-lg text-gray-600 mt-2">{{ new Date().toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) }}</p>
+        </header>
+
+        <!-- SECTION : Les 3 Victoires du Jour -->
+        <section v-if="top3Tasks.length > 0" class="mb-8 p-6 bg-white rounded-xl shadow-lg border border-gray-200">
+            <h2 class="text-2xl font-bold text-gray-900 mb-4 flex items-center">
+                <i data-lucide="award" class="mr-3 text-yellow-500"></i>
+                Vos 3 Victoires du Jour
+            </h2>
+            <div class="space-y-3">
+                <div v-for="task in finalTop3Tasks" :key="task.id" 
+                     class="p-4 rounded-lg flex justify-between items-center transition-all"
+                     :class="task.status === 'done' ? 'bg-green-100 text-gray-500 line-through' : 'bg-blue-50 border border-blue-200'">
+                    <span class="font-semibold">{{ task.title }}</span>
+                    <div class="flex items-center space-x-3">
+                        <span v-if="isTimerRunning(task.id)" class="text-sm font-mono text-blue-700">{{ formatSeconds(remainingSeconds(task.id)) }}</span>
+                        <button v-if="task.status !== 'done' && !isTimerRunning(task.id)" @click="startZeigarnik(task)" class="p-2 hover:bg-blue-200 rounded-full transition" title="Démarrer 120s">
+                            <i data-lucide="timer" class="w-5 h-5 text-blue-600"></i>
+                        </button>
+                        <button v-if="task.status !== 'done' && isTimerRunning(task.id)" @click="stopZeigarnik(task)" class="p-2 hover:bg-red-200 rounded-full transition" title="Arrêter">
+                            <i data-lucide="square" class="w-5 h-5 text-red-600"></i>
+                        </button>
+                        <button @click="deleteTask(task)" class="p-2 hover:bg-red-200 rounded-full transition" title="Supprimer la tâche">
+                            <i data-lucide="trash-2" class="w-5 h-5 text-red-600"></i>
+                        </button>
+                        <button @click="toggleTaskDone(task)" class="p-2 hover:bg-green-200 rounded-full transition" title="Marquer comme terminé">
+                            <i data-lucide="check-circle-2" class="w-5 h-5 text-green-600"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION : Ajout de tâches (Vide-Cerveau) -->
+        <section class="mb-8">
+            <div class="relative">
+                <input type="text" v-model="newTask" @keyup.enter="addTask"
+                       placeholder="Qu'avez-vous en tête ? (Appuyez sur Entrée pour ajouter)"
+                       class="w-full p-4 pr-12 text-lg border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition">
+                <button @click="addTask" class="absolute top-1/2 right-4 -translate-y-1/2 text-gray-400 hover:text-blue-600 transition" title="Ajouter la tâche">
+                    <i data-lucide="plus-circle" class="w-7 h-7"></i>
+                </button>
+            </div>
+        </section>
+
+        <!-- SECTION : Espace de travail (Tri & Matrice) -->
+        <main class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+            <!-- Colonne de Tri -->
+            <div class="lg:col-span-1 bg-white p-4 rounded-xl shadow-lg border border-gray-200">
+                <h3 class="text-xl font-bold mb-4 text-center">📥 À Trier</h3>
+                <draggable v-model="untriagedTasks" item-key="id" group="tasks" class="list-group space-y-3 p-2 bg-gray-50 rounded-lg">
+                    <template #item="{element}">
+                        <div class="task-item bg-white p-3 rounded-lg shadow-sm border border-gray-200 flex items-center justify-between">
+                            <span class="truncate">{{ element.title }}</span>
+                            <button @click.stop="deleteTask(element)" class="p-1 rounded hover:bg-red-100" title="Supprimer">
+                                <i data-lucide="trash-2" class="w-4 h-4 text-red-600"></i>
+                            </button>
+                        </div>
+                    </template>
+                </draggable>
+            </div>
+
+            <!-- Matrice d'Eisenhower -->
+            <div class="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Q1: Important & Urgent -->
+                <div class="bg-red-50 p-4 rounded-xl border-2 border-red-200">
+                    <h3 class="font-bold text-red-800 text-center mb-2">🔥 Important & Urgent</h3>
+                    <p class="text-xs text-red-600 text-center mb-4">À FAIRE en priorité</p>
+                    <draggable v-model="doTasks" item-key="id" group="tasks" class="list-group space-y-3 p-2 bg-red-100 rounded-lg">
+                        <template #item="{element}">
+                            <div class="task-item bg-white p-3 rounded-lg shadow-sm border border-red-200 flex items-center justify-between">
+                                <span class="truncate">{{ element.title }}</span>
+                                <button @click.stop="deleteTask(element)" class="p-1 rounded hover:bg-red-100" title="Supprimer">
+                                    <i data-lucide="trash-2" class="w-4 h-4 text-red-600"></i>
+                                </button>
+                            </div>
+                        </template>
+                    </draggable>
+                </div>
+                <!-- Q2: Important & Non Urgent -->
+                <div class="bg-blue-50 p-4 rounded-xl border-2 border-blue-200">
+                    <h3 class="font-bold text-blue-800 text-center mb-2">📅 Important & Non Urgent</h3>
+                    <p class="text-xs text-blue-600 text-center mb-4">À PLANIFIER</p>
+                    <draggable v-model="planTasks" item-key="id" group="tasks" class="list-group space-y-3 p-2 bg-blue-100 rounded-lg">
+                        <template #item="{element}">
+                            <div class="task-item bg-white p-3 rounded-lg shadow-sm border border-blue-200 flex items-center justify-between">
+                                <span class="truncate">{{ element.title }}</span>
+                                <button @click.stop="deleteTask(element)" class="p-1 rounded hover:bg-blue-100" title="Supprimer">
+                                    <i data-lucide="trash-2" class="w-4 h-4 text-blue-600"></i>
+                                </button>
+                            </div>
+                        </template>
+                    </draggable>
+                </div>
+                <!-- Q3: Urgent & Non Important -->
+                <div class="bg-yellow-50 p-4 rounded-xl border-2 border-yellow-200">
+                    <h3 class="font-bold text-yellow-800 text-center mb-2">⚡ Urgent & Non Important</h3>
+                    <p class="text-xs text-yellow-600 text-center mb-4">À DÉLÉGUER</p>
+                    <draggable v-model="delegateTasks" item-key="id" group="tasks" class="list-group space-y-3 p-2 bg-yellow-100 rounded-lg">
+                        <template #item="{element}">
+                            <div class="task-item bg-white p-3 rounded-lg shadow-sm border border-yellow-200 flex items-center justify-between">
+                                <span class="truncate">{{ element.title }}</span>
+                                <button @click.stop="deleteTask(element)" class="p-1 rounded hover:bg-yellow-100" title="Supprimer">
+                                    <i data-lucide="trash-2" class="w-4 h-4 text-yellow-600"></i>
+                                </button>
+                            </div>
+                        </template>
+                    </draggable>
+                </div>
+                <!-- Q4: Ni Urgent Ni Important -->
+                <div class="bg-gray-200 p-4 rounded-xl border-2 border-gray-300">
+                    <h3 class="font-bold text-gray-800 text-center mb-2">🗑️ Ni Urgent Ni Important</h3>
+                    <p class="text-xs text-gray-600 text-center mb-4">À ÉLIMINER</p>
+                    <draggable v-model="deleteTasks" item-key="id" group="tasks" class="list-group space-y-3 p-2 bg-gray-300 rounded-lg">
+                        <template #item="{element}">
+                            <div class="task-item bg-white p-3 rounded-lg shadow-sm border border-gray-300 flex items-center justify-between">
+                                <span class="truncate">{{ element.title }}</span>
+                                <button @click.stop="deleteTask(element)" class="p-1 rounded hover:bg-gray-200" title="Supprimer">
+                                    <i data-lucide="trash-2" class="w-4 h-4 text-gray-700"></i>
+                                </button>
+                            </div>
+                        </template>
+                    </draggable>
+                </div>
+            </div>
+        </main>
+        
+        <!-- Bouton de sélection des 3 tâches -->
+        <footer v-if="canSelectTop3 && top3Tasks.length === 0" class="mt-8 text-center">
+            <button @click="showTop3Selection = true" class="bg-blue-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-blue-700 transition-transform transform hover:scale-105 shadow-lg">
+                Choisir mes 3 victoires du jour
+            </button>
+        </footer>
+
+        <!-- MODAL : Sélection des 3 tâches prioritaires -->
+        <div v-if="showTop3Selection" class="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
+            <div class="bg-white rounded-xl shadow-2xl p-8 max-w-lg w-full">
+                <h2 class="text-2xl font-bold text-center mb-2">Choisissez vos 3 priorités absolues</h2>
+                <p class="text-center text-gray-600 mb-6">Sélectionnez les 3 tâches qui auront le plus d'impact aujourd'hui.</p>
+                <div class="space-y-3">
+                    <div v-for="task in doTasks" :key="task.id"
+                         @click="toggleTop3(task.id)"
+                         class="p-4 rounded-lg cursor-pointer border-2 transition-all"
+                         :class="top3Selection.includes(task.id) ? 'bg-green-100 border-green-400 ring-2 ring-green-300' : 'bg-gray-50 hover:bg-gray-100 border-gray-200'">
+                        {{ task.title }}
+                    </div>
+                </div>
+                <div class="mt-8 text-center">
+                    <button @click="confirmTop3Selection" 
+                            :disabled="top3Selection.length !== 3"
+                            class="w-full bg-green-600 text-white font-bold py-3 px-6 rounded-lg transition shadow-md disabled:bg-gray-400 disabled:cursor-not-allowed hover:bg-green-700">
+                        Confirmer mes 3 victoires ({{ top3Selection.length }}/3)
+                    </button>
+                     <button @click="showTop3Selection = false" class="mt-3 text-gray-600 hover:underline">
+                        Annuler
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Toast notification -->
+    <div v-if="toastVisible" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
+        <div class="bg-gray-900 text-white px-5 py-3 rounded-lg shadow-xl flex items-center space-x-3">
+            <i data-lucide="bell" class="w-5 h-5 text-yellow-300"></i>
+            <span class="font-medium">{{ toastMessage }}</span>
+        </div>
+    </div>
+ 
+    <script>
+        const { createApp, ref, computed, watch, onMounted, onBeforeUnmount } = Vue;
+
+        const app = createApp({
+            setup() {
+                // --- DONNÉES RÉACTIVES (STATE) ---
+
+                // Champ de saisie pour une nouvelle tâche
+                const newTask = ref('');
+
+                // Liste principale de toutes les tâches
+                const tasks = ref(JSON.parse(localStorage.getItem('tasks') || '[]'));
+                
+                // Timers Zeigarnik: map { [taskId]: endTimestampMs }
+                const timers = ref(JSON.parse(localStorage.getItem('timers') || '{}'));
+                const now = ref(Date.now());
+                let tickInterval = null;
+
+                // Toast notification
+                const toastMessage = ref('');
+                const toastVisible = ref(false);
+                let toastTimeout = null;
+
+                const showToast = (message) => {
+                    toastMessage.value = message;
+                    toastVisible.value = true;
+                    if (toastTimeout) clearTimeout(toastTimeout);
+                    toastTimeout = setTimeout(() => {
+                        toastVisible.value = false;
+                    }, 3000);
+                    Vue.nextTick(() => {
+                        lucide.createIcons();
+                    });
+                };
+
+                // Simple bip sonore via Web Audio API
+                const playBeep = () => {
+                    try {
+                        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                        const o = audioCtx.createOscillator();
+                        const g = audioCtx.createGain();
+                        o.type = 'sine';
+                        o.frequency.setValueAtTime(880, audioCtx.currentTime);
+                        g.gain.setValueAtTime(0.001, audioCtx.currentTime);
+                        g.gain.exponentialRampToValueAtTime(0.2, audioCtx.currentTime + 0.01);
+                        g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.3);
+                        o.connect(g).connect(audioCtx.destination);
+                        o.start();
+                        o.stop(audioCtx.currentTime + 0.35);
+                    } catch (e) {
+                        // ignore audio errors silently
+                    }
+                };
+
+                // --- SUPABASE ---
+                const supabaseUrl = 'https://YOUR_PROJECT_ID.supabase.co'; // Remplacer
+                const supabaseAnonKey = 'YOUR_ANON_KEY'; // Remplacer
+                const supabase = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
+                const cloudEnabled = ref(!!supabaseUrl && !!supabaseAnonKey && !supabaseUrl.includes('YOUR_'));
+
+                const mapDbRowToTask = (row) => ({
+                    id: row.id,
+                    title: row.title,
+                    quadrant: row.quadrant,
+                    status: row.status,
+                    order: row.order ?? 0
+                });
+
+                const loadTasksFromCloud = async () => {
+                    if (!cloudEnabled.value) return;
+                    const { data, error } = await supabase
+                        .from('tasks')
+                        .select('*')
+                        .order('order');
+                    if (error) {
+                        console.warn('Supabase load error:', error.message);
+                        return;
+                    }
+                    if (Array.isArray(data)) {
+                        tasks.value = data.map(mapDbRowToTask);
+                    }
+                };
+
+                const upsertTaskToCloud = async (task) => {
+                    if (!cloudEnabled.value) return;
+                    const payload = { id: task.id, title: task.title, quadrant: task.quadrant, status: task.status, order: task.order ?? 0 };
+                    const { error } = await supabase.from('tasks').upsert(payload).select('id');
+                    if (error) console.warn('Supabase upsert error:', error.message);
+                };
+
+                const updateTaskToCloud = async (task) => {
+                    if (!cloudEnabled.value) return;
+                    const { error } = await supabase
+                        .from('tasks')
+                        .update({ title: task.title, quadrant: task.quadrant, status: task.status, order: task.order ?? 0 })
+                        .eq('id', task.id);
+                    if (error) console.warn('Supabase update error:', error.message);
+                };
+
+                const deleteTaskFromCloud = async (taskId) => {
+                    if (!cloudEnabled.value) return;
+                    const { error } = await supabase.from('tasks').delete().eq('id', taskId);
+                    if (error) console.warn('Supabase delete error:', error.message);
+                };
+
+                const upsertSetting = async (key, value) => {
+                    if (!cloudEnabled.value) return;
+                    const { error } = await supabase
+                        .from('settings')
+                        .upsert({ key, value })
+                        .select('key');
+                    if (error) console.warn('Supabase settings upsert error:', error.message);
+                };
+
+                const loadTop3FromCloud = async () => {
+                    if (!cloudEnabled.value) return;
+                    const { data, error } = await supabase
+                        .from('settings')
+                        .select('value')
+                        .eq('key', 'top3Tasks')
+                        .single();
+                    if (!error && data && data.value && Array.isArray(data.value)) {
+                        top3Tasks.value = data.value;
+                    }
+                };
+
+                // Contrôle l'affichage de la modale de sélection
+                const showTop3Selection = ref(false);
+                
+                // Stocke les IDs des tâches sélectionnées dans la modale
+                const top3Selection = ref([]);
+                
+                // Stocke les IDs des 3 tâches prioritaires confirmées
+                const top3Tasks = ref(JSON.parse(localStorage.getItem('top3Tasks') || '[]'));
+
+                // --- LOGIQUE DE PERSISTANCE (LOCALSTORAGE) ---
+
+                // Sauvegarde les tâches dans le localStorage à chaque modification
+                watch(tasks, (newTasks) => {
+                    localStorage.setItem('tasks', JSON.stringify(newTasks));
+                    Vue.nextTick(() => {
+                        lucide.createIcons();
+                    });
+                }, { deep: true });
+
+                // Sauvegarde les 3 tâches prioritaires
+                watch(top3Tasks, (newTop3) => {
+                    localStorage.setItem('top3Tasks', JSON.stringify(newTop3));
+                    Vue.nextTick(() => {
+                        lucide.createIcons();
+                    });
+                    upsertSetting('top3Tasks', newTop3);
+                }, { deep: true });
+
+                // Persiste les timers Zeigarnik
+                watch(timers, (newTimers) => {
+                    localStorage.setItem('timers', JSON.stringify(newTimers));
+                }, { deep: true });
+
+                onMounted(() => {
+                    tickInterval = setInterval(() => {
+                        now.value = Date.now();
+                        Vue.nextTick(() => {
+                            lucide.createIcons();
+                        });
+                    }, 1000);
+                    // Chargement initial depuis Supabase
+                    loadTasksFromCloud();
+                    loadTop3FromCloud();
+                    // Abonnement temps réel
+                    if (cloudEnabled.value) {
+                        supabase.channel('public:tasks-changes')
+                            .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, (payload) => {
+                                const row = payload.new || payload.old;
+                                if (!row) return;
+                                const id = row.id;
+                                if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+                                    const existing = tasks.value.find(t => t.id === id);
+                                    const mapped = mapDbRowToTask(payload.new);
+                                    if (existing) {
+                                        Object.assign(existing, mapped);
+                                    } else {
+                                        tasks.value.push(mapped);
+                                    }
+                                } else if (payload.eventType === 'DELETE') {
+                                    const idx = tasks.value.findIndex(t => t.id === id);
+                                    if (idx > -1) tasks.value.splice(idx, 1);
+                                }
+                            })
+                            .subscribe();
+                        supabase.channel('public:settings-changes')
+                            .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, (payload) => {
+                                if (payload.new && payload.new.key === 'top3Tasks' && payload.new.value) {
+                                    if (Array.isArray(payload.new.value)) {
+                                        top3Tasks.value = payload.new.value;
+                                    }
+                                }
+                            })
+                            .subscribe();
+                    }
+                });
+
+                onBeforeUnmount(() => {
+                    if (tickInterval) clearInterval(tickInterval);
+                });
+
+
+                // --- PROPRIÉTÉS CALCULÉES (COMPUTED) ---
+                // Ces propriétés filtrent la liste principale des tâches pour chaque quadrant.
+                // Elles se mettent à jour automatiquement quand `tasks` change.
+
+                const untriagedTasks = computed({
+                    get: () => tasks.value
+                        .filter(t => t.quadrant === 'untriaged')
+                        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+                    set: (newVal) => updateTasksForQuadrant(newVal, 'untriaged')
+                });
+
+                const doTasks = computed({
+                    get: () => tasks.value
+                        .filter(t => t.quadrant === 'do')
+                        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+                    set: (newVal) => updateTasksForQuadrant(newVal, 'do')
+                });
+
+                const planTasks = computed({
+                    get: () => tasks.value
+                        .filter(t => t.quadrant === 'plan')
+                        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+                    set: (newVal) => updateTasksForQuadrant(newVal, 'plan')
+                });
+
+                const delegateTasks = computed({
+                    get: () => tasks.value
+                        .filter(t => t.quadrant === 'delegate')
+                        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+                    set: (newVal) => updateTasksForQuadrant(newVal, 'delegate')
+                });
+
+                const deleteTasks = computed({
+                    get: () => tasks.value
+                        .filter(t => t.quadrant === 'delete')
+                        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+                    set: (newVal) => updateTasksForQuadrant(newVal, 'delete')
+                });
+
+                // Détermine si le bouton "Choisir mes 3 victoires" doit être affiché
+                const canSelectTop3 = computed(() => doTasks.value.length >= 3);
+
+                // Récupère les objets complets des 3 tâches prioritaires pour l'affichage
+                const finalTop3Tasks = computed(() => {
+                    return top3Tasks.value.map(id => tasks.value.find(t => t.id === id)).filter(Boolean);
+                });
+
+
+                // --- MÉTHODES (ACTIONS) ---
+
+                // Met à jour le quadrant d'une tâche après un glisser-déposer
+                const updateTasksForQuadrant = (updatedTasks, quadrant) => {
+                    updatedTasks.forEach((task, index) => {
+                        const originalTask = tasks.value.find(t => t.id === task.id);
+                        if (originalTask) {
+                            originalTask.quadrant = quadrant;
+                            originalTask.order = index;
+                            updateTaskToCloud(originalTask);
+                        }
+                    });
+                };
+                
+                // Ajoute une nouvelle tâche à la liste
+                const addTask = () => {
+                    const title = newTask.value.trim();
+                    if (title) {
+                        const currentUntriaged = tasks.value.filter(t => t.quadrant === 'untriaged');
+                        const nextOrder = currentUntriaged.length;
+                        const newItem = {
+                            id: Date.now(),
+                            title: title,
+                            quadrant: 'untriaged', // Commence dans la colonne "À Trier"
+                            status: 'todo',
+                            order: nextOrder
+                        };
+                        tasks.value.push(newItem);
+                        upsertTaskToCloud(newItem);
+                        newTask.value = '';
+                    }
+                };
+
+                // Gère la sélection/désélection d'une tâche dans la modale
+                const toggleTop3 = (taskId) => {
+                    const index = top3Selection.value.indexOf(taskId);
+                    if (index > -1) {
+                        top3Selection.value.splice(index, 1);
+                    } else if (top3Selection.value.length < 3) {
+                        top3Selection.value.push(taskId);
+                    }
+                };
+                
+                // Confirme la sélection et met à jour la liste principale
+                const confirmTop3Selection = () => {
+                    if (top3Selection.value.length === 3) {
+                        top3Tasks.value = [...top3Selection.value];
+                        showTop3Selection.value = false;
+                        top3Selection.value = [];
+                    }
+                };
+
+                // Marque une tâche comme terminée ou à faire
+                const toggleTaskDone = (taskToToggle) => {
+                    const task = tasks.value.find(t => t.id === taskToToggle.id);
+                    if(task) {
+                        task.status = task.status === 'done' ? 'todo' : 'done';
+                        // Arrête le timer s'il existe
+                        if (task.status === 'done' && timers.value[task.id]) {
+                            delete timers.value[task.id];
+                        }
+                        updateTaskToCloud(task);
+                    }
+                };
+
+                // Minuteur Zeigarnik (120s)
+                const startZeigarnik = (task) => {
+                    if (task.status === 'done') return;
+                    // Empêche le lancement si un autre minuteur est en cours
+                    const hasRunning = Object.values(timers.value).some(end => typeof end === 'number' && end > Date.now());
+                    if (hasRunning) {
+                        showToast('Un minuteur est déjà en cours. Arrêtez-le avant d\'en démarrer un autre.');
+                        return;
+                    }
+                    const endAt = Date.now() + 120000; // 120s
+                    timers.value[task.id] = endAt;
+                };
+
+                const stopZeigarnik = (task) => {
+                    if (timers.value[task.id]) {
+                        delete timers.value[task.id];
+                    }
+                };
+
+                const isTimerRunning = (taskId) => {
+                    const end = timers.value[taskId];
+                    return typeof end === 'number' && end > now.value;
+                };
+
+                const remainingSeconds = (taskId) => {
+                    const end = timers.value[taskId];
+                    if (!end) return 0;
+                    return Math.max(0, Math.ceil((end - now.value) / 1000));
+                };
+
+                const formatSeconds = (seconds) => {
+                    const m = Math.floor(seconds / 60);
+                    const s = seconds % 60;
+                    return `${m}:${String(s).padStart(2, '0')}`;
+                };
+
+                // Nettoie automatiquement les timers arrivés à échéance
+                watch(now, () => {
+                    Object.entries(timers.value).forEach(([id, end]) => {
+                        if (typeof end === 'number' && end <= now.value) {
+                            const task = tasks.value.find(t => String(t.id) === String(id));
+                            if (task) {
+                                playBeep();
+                                showToast(`Minuteur terminé: ${task.title}`);
+                            }
+                            delete timers.value[id];
+                        }
+                    });
+                });
+
+                const reindexQuadrantOrders = (quadrant) => {
+                    const list = tasks.value
+                        .filter(t => t.quadrant === quadrant)
+                        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+                        .map((t, idx) => ({ task: t, idx }));
+                    list.forEach(({ task, idx }) => {
+                        if (task.order !== idx) {
+                            task.order = idx;
+                            updateTaskToCloud(task);
+                        }
+                    });
+                };
+
+                const deleteTask = (task) => {
+                    const idx = tasks.value.findIndex(t => t.id === task.id);
+                    if (idx > -1) {
+                        tasks.value.splice(idx, 1);
+                        deleteTaskFromCloud(task.id);
+                        // Nettoie timer et Top3
+                        if (timers.value[task.id]) delete timers.value[task.id];
+                        const sIdx = top3Tasks.value.indexOf(task.id);
+                        if (sIdx > -1) top3Tasks.value.splice(sIdx, 1);
+                        upsertSetting('top3Tasks', top3Tasks.value);
+                        // Réindexe les ordres du quadrant
+                        reindexQuadrantOrders(task.quadrant);
+                    }
+                };
+
+                // --- EXPOSITION ---
+                // On retourne toutes les données et méthodes nécessaires au template HTML
+                return {
+                    newTask,
+                    tasks,
+                    timers,
+                    now,
+                    toastMessage,
+                    toastVisible,
+                    cloudEnabled,
+                    showTop3Selection,
+                    top3Selection,
+                    top3Tasks,
+                    untriagedTasks,
+                    doTasks,
+                    planTasks,
+                    delegateTasks,
+                    deleteTasks,
+                    canSelectTop3,
+                    finalTop3Tasks,
+                    addTask,
+                    toggleTop3,
+                    confirmTop3Selection,
+                    toggleTaskDone,
+                    startZeigarnik,
+                    stopZeigarnik,
+                    isTimerRunning,
+                    remainingSeconds,
+                    formatSeconds,
+                    showToast,
+                    deleteTask
+                };
+            }
+        });
+
+        // Enregistre le composant draggable globalement
+        app.component('draggable', vuedraggable);
+
+        // Monte l'application Vue sur l'élément #app
+        app.mount('#app');
+        
+        // Initialise les icônes Lucide après le montage de l'application
+        Vue.nextTick(() => {
+            lucide.createIcons();
+        });
+
+    </script>
+
+</body>
+</html>
