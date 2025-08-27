@@ -1,15 +1,23 @@
 # Manuel de lancement – Mon Cerveau Augmenté
 
-## Aperçu
-Application web (HTML unique) pour capturer, trier et prioriser vos tâches (Matrice d’Eisenhower + Top 3 du jour), avec minuteur de 120s (effet Zeigarnik), drag-and-drop, et synchronisation optionnelle via Supabase.
+## 🌐 Disponible en ligne
+**Application déployée :** https://aurlro.github.io/productivity-project/
 
-## 1) Lancer en local (sans cloud)
+## Aperçu
+Application web (HTML unique) pour capturer, trier et prioriser vos tâches (Matrice d'Eisenhower + Top 3 du jour), avec minuteur de 120s (effet Zeigarnik), drag-and-drop, et synchronisation optionnelle via Supabase.
+
+## 1) Utiliser l'application
+### Option A - En ligne (recommandée)
+- Ouvrir : https://aurlro.github.io/productivity-project/
+- Aucune installation requise
+
+### Option B - Local (sans cloud)
 - Prérequis: un navigateur moderne (Chrome, Edge, Safari, Firefox)
 - Étapes:
-  1. Ouvrir le fichier `v0.html` en double-cliquant (ou via “Ouvrir avec…” votre navigateur)
+  1. Ouvrir le fichier `index.html` en double-cliquant (ou via "Ouvrir avec…" votre navigateur)
   2. Ajouter des tâches via le champ en haut
   3. Glisser-déposer les tâches entre colonnes (À Trier, Do/Plan/Déléguer/Éliminer)
-  4. Sélectionner vos 3 priorités (bouton “Choisir mes 3 victoires”) puis utiliser le minuteur 120s
+  4. Sélectionner vos 3 priorités (bouton "Choisir mes 3 victoires") puis utiliser le minuteur 120s
 - Persistance: vos données sont enregistrées automatiquement dans `localStorage` (navigateur)
 
 ## 2) Activer la synchronisation Supabase (optionnel)
@@ -17,12 +25,12 @@ Application web (HTML unique) pour capturer, trier et prioriser vos tâches (Mat
   - Créer le projet Supabase (gratuit)
   - Créer les tables `tasks` et `settings` + activer RLS et Realtime
   - Récupérer `supabaseUrl` et `supabaseAnonKey`
-- Dans `v0.html`, remplacer les placeholders:
+- Dans `index.html`, remplacer les placeholders:
 ```js
 const supabaseUrl = 'https://YOUR_PROJECT_ID.supabase.co';
 const supabaseAnonKey = 'YOUR_ANON_KEY';
 ```
-- Ouvrir `v0.html` et vérifier:
+- Ouvrir `index.html` et vérifier:
   - Les tâches s’affichent depuis la base
   - Les modifications (ajout, ordre, statut, suppression) se synchronisent
   - Le Top 3 est stocké dans `settings` (clé `top3Tasks`) et se met à jour en temps réel
@@ -53,7 +61,7 @@ const supabaseAnonKey = 'YOUR_ANON_KEY';
 - Pour un usage à plusieurs, activer Auth (Supabase) et associer un `user_id` aux tâches, puis restreindre les policies par `auth.uid()` (voir suggestions en fin de `SUPABASE_GUIDE.md`)
 
 ## 7) Structure du projet
-- `v0.html`: application complète (UI + logique + intégrations)
+- `index.html`: application complète (UI + logique + intégrations)
 - `SUPABASE_GUIDE.md`: guide de configuration Supabase
 - `README.md`: ce manuel de lancement
 
