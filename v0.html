@@ -62,6 +62,9 @@
             <h2 class="text-2xl font-bold text-gray-900 mb-4 flex items-center">
                 <i data-lucide="award" class="mr-3 text-yellow-500"></i>
                 Vos 3 Victoires du Jour
+                <button @click="openTop3" class="ml-auto text-sm px-3 py-1 rounded-md border border-blue-300 text-blue-700 hover:bg-blue-50" title="Re-choisir mes 3 victoires">
+                    Re-choisir
+                </button>
             </h2>
             <div class="space-y-3">
                 <div v-for="task in finalTop3Tasks" :key="task.id" 
@@ -215,16 +218,16 @@
             </div>
         </div>
 
+        <!-- Toast notification (déplacé à l'intérieur de #app) -->
+        <div v-if="toastVisible" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
+            <div class="bg-gray-900 text-white px-5 py-3 rounded-lg shadow-xl flex items-center space-x-3">
+                <i data-lucide="bell" class="w-5 h-5 text-yellow-300"></i>
+                <span class="font-medium">{{ toastMessage }}</span>
+            </div>
+        </div>
+ 
     </div>
 
-    <!-- Toast notification -->
-    <div v-if="toastVisible" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
-        <div class="bg-gray-900 text-white px-5 py-3 rounded-lg shadow-xl flex items-center space-x-3">
-            <i data-lucide="bell" class="w-5 h-5 text-yellow-300"></i>
-            <span class="font-medium">{{ toastMessage }}</span>
-        </div>
-    </div>
- 
     <script>
         const { createApp, ref, computed, watch, onMounted, onBeforeUnmount } = Vue;
 
@@ -387,9 +390,6 @@
                 onMounted(() => {
                     tickInterval = setInterval(() => {
                         now.value = Date.now();
-                        Vue.nextTick(() => {
-                            lucide.createIcons();
-                        });
                     }, 1000);
                     // Chargement initial depuis Supabase
                     loadTasksFromCloud();
@@ -532,6 +532,11 @@
                     }
                 };
 
+                const openTop3 = () => {
+                    top3Selection.value = [...top3Tasks.value];
+                    showTop3Selection.value = true;
+                };
+
                 // Marque une tâche comme terminée ou à faire
                 const toggleTaskDone = (taskToToggle) => {
                     const task = tasks.value.find(t => t.id === taskToToggle.id);
@@ -646,6 +651,7 @@
                     addTask,
                     toggleTop3,
                     confirmTop3Selection,
+                    openTop3,
                     toggleTaskDone,
                     startZeigarnik,
                     stopZeigarnik,
